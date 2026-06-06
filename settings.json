@@ -1,0 +1,34 @@
+{
+  "lastChangelogVersion": "0.78.1",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "medium",
+  "compaction": {
+    "enabled": true
+  },
+  "followUpMode": "one-at-a-time",
+  "steeringMode": "all",
+  "transport": "auto",
+  "theme": "dark",
+  "terminal": {
+    "showTerminalProgress": true,
+    "clearOnShrink": true
+  },
+  "hideThinkingBlock": true,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "enabledModels": [
+    "openai-codex/gpt-5.5-fast",
+    "openai-codex/gpt-5.5",
+    "openai-codex/gpt-5.3-codex-spark",
+    "github-copilot/claude-sonnet-4.6"
+  ],
+  "quietStartup": true,
+  "httpIdleTimeoutMs": 30000,
+  "packages": [
+    "npm:pi-subagents",
+    "npm:pi-intercom",
+    "npm:pi-hermes-memory"
+  ],
+  "shellPath": "/bin/zsh"
+}

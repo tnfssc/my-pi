@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Single CLI policy:
+# - If normal Chrome is already running and CDP is live, connect to it.
+# - Otherwise launch/reuse headless Chrome for Testing with a separate persistent automation profile.
+
+PROFILE="${PI_CHROME_PROFILE:-$HOME/.pi/agent/chrome-profiles/headless-default}"
+CFT_DEFAULT="$HOME/Library/Caches/ms-playwright/chromium-1219/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+CHROME="${PI_CHROME_BIN:-$CFT_DEFAULT}"
+CDP_FILE="$PROFILE/DevToolsActivePort"
+LOG_DIR="$HOME/.pi/agent/chrome-harness/logs"
+PID_FILE="$HOME/.pi/agent/chrome-harness/headless.pid"
+mkdir -p "$PROFILE" "$LOG_DIR" "$(dirname "$PID_FILE")"
+
+normal_chrome_running() {
+  /usr/bin/pgrep -x "Google Chrome" >/dev/null 2>&1
+}
+
+cdp_live_for_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 1
+  local port
+  port="$(head -n 1 "$file" 2>/dev/null || true)"
+  [[ -n "$port" ]] || return 1
+  local code
+  code="$(/usr/bin/curl -sS -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:${port}/json/version" 2>/dev/null || true)"
+  # Chrome 147+ may return 404 for /json/* on the default profile while the
+  # DevToolsActivePort WebSocket path is still valid. Treat any HTTP response
+  # as live; connection-refused/timeouts produce 000/empty and remain dead.
+  [[ "$code" != "" && "$code" != "000" ]] || return 1
+}
+
+connect_from_file() {
+  local file="$1"
+  shift
+  local port path
+  port="$(head -n 1 "$file")"
+  path="$(tail -n 1 "$file")"
+  if [[ -z "$port" || -z "$path" ]]; then
+    echo "chrome-harness: invalid DevToolsActivePort contents: $file" >&2
+    exit 1
+  fi
+  export BU_CDP_WS="ws://127.0.0.1:${port}${path}"
+  exec browser-harness "$@"
+}
+
+launch_headless_automation_profile() {
+  if [[ ! -x "$CHROME" ]]; then
+    echo "chrome-harness: Chrome for Testing binary not found/executable: $CHROME" >&2
+    echo "Set PI_CHROME_BIN to a Chrome for Testing binary, or install one." >&2
+    exit 1
+  fi
+
+  rm -f "$CDP_FILE"
+  "$CHROME" \
+    --headless=new \
+    --remote-debugging-port=0 \
+    --remote-debugging-address=127.0.0.1 \
+    --user-data-dir="$PROFILE" \
+    --no-first-run \
+    --no-default-browser-check \
+    --window-size="${PI_CHROME_WINDOW_SIZE:-1728,940}" \
+    about:blank \
+    >"$LOG_DIR/chrome.out" 2>"$LOG_DIR/chrome.err" &
+  echo "$!" > "$PID_FILE"
+
+  for _ in {1..100}; do
+    cdp_live_for_file "$CDP_FILE" && return 0
+    sleep 0.1
+  done
+
+  echo "chrome-harness: headless Chrome did not expose DevToolsActivePort for profile: $PROFILE" >&2
+  echo "binary: $CHROME" >&2
+  echo "stderr tail:" >&2
+  tail -40 "$LOG_DIR/chrome.err" >&2 || true
+  exit 1
+}
+
+DEFAULT_CDP_FILE="$HOME/Library/Application Support/Google/Chrome/DevToolsActivePort"
+if normal_chrome_running && cdp_live_for_file "$DEFAULT_CDP_FILE"; then
+  connect_from_file "$DEFAULT_CDP_FILE" "$@"
+fi
+
+if ! cdp_live_for_file "$CDP_FILE"; then
+  launch_headless_automation_profile
+fi
+
+export BU_NAME="${BU_NAME:-headless-default}"
+connect_from_file "$CDP_FILE" "$@"

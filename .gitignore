@@ -1,0 +1,38 @@
+# secrets / auth
+auth.json
+*.pem
+*.key
+*.token
+.env
+.env.*
+!.env.example
+
+# private runtime state
+sessions/
+pi-hermes-memory/
+projects-memory/
+cache/
+run-history.jsonl
+intercom/
+chrome-profiles/
+chrome-harness/logs/
+chrome-harness/*.pid
+
+# dependencies / build
+node_modules/
+dist/
+build/
+coverage/
+__pycache__/
+*.pyc
+.DS_Store
+
+# scratch / backups
+*.bak*
+*.tmp
+*.log
+
+# local browser scratch: keep docs, ignore task-specific scripts
+browser-harness/*.py
+browser-harness/*.sh
+!browser-harness/README.md

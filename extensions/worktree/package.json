@@ -1,0 +1,12 @@
+{
+  "name": "pi-worktree-extension",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "execa": "^9.6.0",
+    "simple-git": "^3.28.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
