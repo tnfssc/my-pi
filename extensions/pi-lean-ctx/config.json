@@ -1,0 +1,5 @@
+{
+  "mode": "replace",
+  "enableMcp": true,
+  "binary": "/opt/homebrew/bin/lean-ctx"
+}

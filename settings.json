@@ -18,7 +18,6 @@
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
   "enabledModels": [
-    "openai-codex/gpt-5.5-fast",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.3-codex-spark",
     "github-copilot/claude-sonnet-4.6"
@@ -28,7 +27,9 @@
   "packages": [
     "npm:pi-subagents",
     "npm:pi-intercom",
-    "npm:pi-hermes-memory"
+    "npm:pi-hermes-memory",
+    "npm:pi-lean-ctx",
+    "npm:@howaboua/pi-codex-conversion"
   ],
   "shellPath": "/bin/zsh"
 }

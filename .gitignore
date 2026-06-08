@@ -36,3 +36,11 @@ __pycache__/
 browser-harness/*.py
 browser-harness/*.sh
 !browser-harness/README.md
+disabled-extensions/
+npm/
+*.disabled
+*.disabled-*
+pi-codex-conversion.json
+agent.backup*/
+mcp.json.bak*
+*.skill

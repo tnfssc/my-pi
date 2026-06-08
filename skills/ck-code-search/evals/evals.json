@@ -1,0 +1,41 @@
+{
+  "skill_name": "ck-code-search",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "I'm in a medium TypeScript/Python repo. I think ck is installed already. I want to know whether the local semantic index is usable, and then run a couple searches for auth logic and file uploads. Keep it practical; don't explain every ck flag.",
+      "expected_output": "A short command plan using ck --status, ck --sem, and ck --hybrid with practical verification guidance.",
+      "files": [],
+      "expectations": [
+        "Mentions checking index with `ck --status .` or `ck --status-verbose .`.",
+        "Includes semantic search using `ck --sem` for auth/authentication logic.",
+        "Includes hybrid search using `ck --hybrid` for file upload.",
+        "Keeps guidance concise and practical rather than listing many rare flags."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Set up ck for this repo with the jina code model. I mainly want code search, not docs archaeology. What commands should you run and how do you know it finished if the command times out?",
+      "expected_output": "A concise workflow centered on ck --switch-model jina-code --force ., long timeout, and ck --status-verbose completion checks.",
+      "files": [],
+      "expectations": [
+        "Uses `ck --switch-model jina-code --force .` or an equivalent jina-code indexing command.",
+        "Says to verify completion with `ck --status-verbose .`.",
+        "States that completion means embedded chunks equal total chunks.",
+        "Mentions timeout does not automatically mean failure; status should be checked after timeout."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "ck indexing blew up while processing a PDF with `pdf-extract` and `index out of bounds`. I don't care about indexing PDFs; I just need code search working. What should you do?",
+      "expected_output": "A practical workaround: add *.pdf to .ckignore, rerun indexing, verify with status, avoid deep ck internals.",
+      "files": [],
+      "expectations": [
+        "Adds or recommends adding `*.pdf` to `.ckignore` when PDFs are not needed.",
+        "Reruns ck indexing after changing `.ckignore`.",
+        "Verifies success with `ck --status` or `ck --status-verbose` and sample searches.",
+        "Avoids deep debugging of pdf-extract internals."
+      ]
+    }
+  ]
+}

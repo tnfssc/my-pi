@@ -1,0 +1,44 @@
+{
+  "skill_name": "jira-cli",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Can you show me the tickets assigned to me in Jira that are not Done, ideally as a small table with key, status, priority, and summary? Please don't open the interactive UI.",
+      "expected_output": "Uses jira issue list with assignee set to $(jira me), excludes Done, requests --plain output with explicit columns, and explains the command/run result.",
+      "files": [],
+      "assertions": [
+        "Output includes a jira issue list command",
+        "Command filters assignee to the current user with $(jira me)",
+        "Command excludes Done status or equivalent done category",
+        "Command uses --plain or another non-interactive machine-readable output mode",
+        "Command selects key/status/priority/summary columns or explains equivalent output"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Create a bug in project PAY titled 'Checkout page hangs on coupon apply'. Body should say: Steps: open checkout, enter SAVE10, click Apply. Expected: discount appears. Actual: spinner never stops. Set priority High, labels checkout and regression.",
+      "expected_output": "Recognizes this is a Jira write operation, summarizes the intended change, shows a safe jira issue create command using project PAY/type Bug/priority High/labels/body, and asks for confirmation before running unless explicitly told to run now.",
+      "files": [],
+      "assertions": [
+        "Output treats issue creation as a write operation requiring confirmation",
+        "Command uses jira issue create with project PAY and type Bug",
+        "Command includes the requested summary, priority High, and both labels",
+        "Command preserves the multiline bug body accurately",
+        "Command uses --no-input or otherwise avoids unexpected interactive prompting"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need a quick sprint handoff: list current sprint issues assigned to me, then identify anything high priority or still In Progress. Use Jira CLI and keep it reproducible.",
+      "expected_output": "Uses jira sprint list --current with assignee filter and plain/raw output, provides a reproducible command, and summarizes high-priority/In Progress items from the results.",
+      "files": [],
+      "assertions": [
+        "Output includes jira sprint list --current or an equivalent current sprint command",
+        "Command filters to the current user with $(jira me)",
+        "Command uses --plain/--raw/--csv rather than the interactive explorer",
+        "Output requests or includes columns needed to identify priority and status",
+        "Response says it will call out high-priority or In Progress issues"
+      ]
+    }
+  ]
+}
