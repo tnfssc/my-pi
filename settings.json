@@ -61,6 +61,7 @@
   "extensions": [
     "profile-resources/codex/extensions/cmux-terminals",
     "profile-resources/codex/extensions/cmux-subagents",
+    "profile-resources/codex/extensions/codex-lite",
     "extensions/cmux-attention"
   ]
 }
