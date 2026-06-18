@@ -316,7 +316,7 @@ async function start(ctx: ExtensionContext, params: Params) {
   const args = ["-p", "--mode", "json", "--name", params.name ?? id]; if (params.model) args.push("--model", params.model); if (params.thinking) args.push("--thinking", params.thinking); args.push(prompt);
   const pretty = join(extensionDir(), "pretty-json-events.mjs");
   const command = `env PI_CMUX_SUBAGENT_DEPTH=1 pi ${args.map(shellQuote).join(" ")} | tee ${shellQuote(eventsPath)} | node ${shellQuote(pretty)}`;
-  try { await sendText(workspace, surface, `cd ${shellQuote(cwd)}\n${command}\n`); }
+  try { await sendText(workspace, surface, ` cd ${shellQuote(cwd)}\n ${command}\n`); }
   catch (error) { await closeSurfaceBestEffort(workspace, surface); throw error; }
   const rec: SubagentRecord = { id, name: params.name, prompt: params.prompt, cwd, surface, placement, createdAt: Date.now(), updatedAt: Date.now(), status: "running", workspace, eventsPath, model: params.model, thinking: params.thinking };
   update(ctx, rec);

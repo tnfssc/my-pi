@@ -138,8 +138,10 @@ function configuredShell(): string {
   } catch {}
   return "/bin/zsh";
 }
+function historyIgnored(command: string): string { return ` ${command}`; }
+
 function buildShellCommand(cwd: string, command: string): string {
-  return `cd ${shellEscape(cwd)}\n${command}`;
+  return `${historyIgnored(`cd ${shellEscape(cwd)}`)}\n${historyIgnored(command)}`;
 }
 function safeNumber(value: unknown, fallback: number, max = MAX_LINES): number {
   const n = typeof value === "number" ? Math.floor(value) : fallback;
