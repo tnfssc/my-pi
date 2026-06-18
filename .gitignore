@@ -27,7 +27,6 @@ cache/
 run-history.jsonl
 intercom/
 chrome-profiles/
-profiles/profiles.json
 profiles/settings-backups/
 profile-resources/**/node_modules/
 profile-resources/**/test*.mjs

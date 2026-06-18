@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "active": "codex",
+  "profiles": {
+    "default": {
+      "description": "Saved profile: default",
+      "settings": {
+        "packages": [
+          "npm:pi-hermes-memory"
+        ],
+        "theme": "dark",
+        "defaultProvider": "openai-codex",
+        "defaultModel": "gpt-5.5",
+        "defaultThinkingLevel": "low",
+        "enabledModels": [
+          "openai-codex/gpt-5.5",
+          "openai-codex/gpt-5.3-codex-spark",
+          "github-copilot/claude-sonnet-4.6"
+        ],
+        "compaction": {
+          "enabled": true
+        },
+        "shellPath": "/bin/zsh",
+        "steeringMode": "all",
+        "hideThinkingBlock": true
+      },
+      "createdAt": "2026-06-14T13:21:09.665Z",
+      "updatedAt": "2026-06-14T15:38:42.477Z"
+    },
+    "minimal": {
+      "description": "Saved profile: minimal",
+      "settings": {
+        "packages": [
+          "npm:pi-hermes-memory"
+        ],
+        "theme": "dark",
+        "defaultProvider": "openai-codex",
+        "defaultModel": "gpt-5.5",
+        "defaultThinkingLevel": "low",
+        "enabledModels": [
+          "openai-codex/gpt-5.5",
+          "openai-codex/gpt-5.3-codex-spark",
+          "github-copilot/claude-sonnet-4.6"
+        ],
+        "compaction": {
+          "enabled": true
+        },
+        "shellPath": "/bin/zsh",
+        "steeringMode": "all",
+        "hideThinkingBlock": true
+      },
+      "createdAt": "2026-06-14T14:49:26.588Z",
+      "updatedAt": "2026-06-14T15:40:50.257Z"
+    },
+    "cursor": {
+      "description": "Cursor SDK / Composer 2.5 profile",
+      "settings": {
+        "theme": "dark",
+        "defaultThinkingLevel": "low",
+        "compaction": {
+          "enabled": true
+        },
+        "shellPath": "/bin/zsh",
+        "steeringMode": "all",
+        "hideThinkingBlock": true,
+        "packages": [
+          "npm:pi-hermes-memory",
+          "npm:pi-cursor-sdk"
+        ],
+        "defaultProvider": "cursor",
+        "defaultModel": "composer-2-5",
+        "enabledModels": [
+          "openai-codex/gpt-5.5",
+          "openai-codex/gpt-5.3-codex-spark",
+          "github-copilot/claude-sonnet-4.6",
+          "cursor/composer-2-5"
+        ]
+      },
+      "createdAt": "2026-06-14T16:13:21.547326Z",
+      "updatedAt": "2026-06-14T16:13:21.547326Z"
+    },
+    "codex": {
+      "description": "Saved profile: codex",
+      "settings": {
+        "packages": [
+          "npm:pi-hermes-memory"
+        ],
+        "theme": "dark",
+        "defaultProvider": "openai-codex",
+        "defaultModel": "gpt-5.5",
+        "defaultThinkingLevel": "low",
+        "enabledModels": [
+          "openai-codex/gpt-5.5",
+          "openai-codex/gpt-5.3-codex-spark",
+          "github-copilot/claude-sonnet-4.6"
+        ],
+        "compaction": {
+          "enabled": true
+        },
+        "shellPath": "/bin/zsh",
+        "steeringMode": "all",
+        "hideThinkingBlock": true,
+        "cmux-terminal": {
+          "shell": "/bin/zsh"
+        },
+        "extensions": [
+          "profile-resources/codex/extensions/cmux-terminals",
+          "profile-resources/codex/extensions/cmux-subagents",
+          "profile-resources/codex/extensions/codex-lite"
+        ]
+      },
+      "createdAt": "2026-06-14T18:48:46.337Z",
+      "updatedAt": "2026-06-15T00:00:00.000Z"
+    }
+  }
+}
