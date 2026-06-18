@@ -85,10 +85,16 @@
         "packages": [
           "npm:pi-hermes-memory"
         ],
+        "extensions": [
+          "profile-resources/codex/extensions/cmux-terminals",
+          "profile-resources/codex/extensions/cmux-subagents",
+          "profile-resources/codex/extensions/codex-lite",
+          "extensions/cmux-attention"
+        ],
         "theme": "dark",
         "defaultProvider": "openai-codex",
         "defaultModel": "gpt-5.5",
-        "defaultThinkingLevel": "low",
+        "defaultThinkingLevel": "medium",
         "enabledModels": [
           "openai-codex/gpt-5.5",
           "openai-codex/gpt-5.3-codex-spark",
@@ -99,18 +105,10 @@
         },
         "shellPath": "/bin/zsh",
         "steeringMode": "all",
-        "hideThinkingBlock": true,
-        "cmux-terminal": {
-          "shell": "/bin/zsh"
-        },
-        "extensions": [
-          "profile-resources/codex/extensions/cmux-terminals",
-          "profile-resources/codex/extensions/cmux-subagents",
-          "profile-resources/codex/extensions/codex-lite"
-        ]
+        "hideThinkingBlock": true
       },
       "createdAt": "2026-06-14T18:48:46.337Z",
-      "updatedAt": "2026-06-15T00:00:00.000Z"
+      "updatedAt": "2026-06-18T09:07:59.410Z"
     }
   }
 }
