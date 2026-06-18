@@ -37,6 +37,39 @@ cmux reorder-surface --surface surface:7 --before surface:3
 cmux trigger-flash --surface surface:7
 ```
 
+## Agent Persistent Terminals
+
+Pi has a local `cmux_terminal` tool for commands that should keep running in a cmux terminal and be inspected later. Use normal `bash` for quick finite commands whose output should be captured immediately. Use `cmux_terminal` for background/persistent/interactive commands: dev servers, watchers, log tails, TUIs, REPLs, `k9s`, `lazygit`, `npm run dev`, `tail -f`, `watch`, etc.
+
+Tool actions:
+
+- `start`: start a command in this cmux workspace and track it for the current Pi session.
+- `read`: read terminal output later.
+- `search`: search terminal scrollback/output for errors, URLs, readiness lines, stack traces, etc.
+- `write_stdin`: write raw stdin to the terminal. Include `\n` when Enter is wanted.
+- `list`: list terminals started by this Pi session only.
+
+Default policy:
+
+- Simple finite command → `bash`.
+- Long-running/interactive/background command → `cmux_terminal action=start`.
+- Need to inspect persistent command → `cmux_terminal action=read` or `action=search`.
+- Need to interact → `cmux_terminal action=write_stdin`.
+- Name terminals with short stable names like `dev`, `tests`, `logs`, `k9s`.
+- `cmux_terminal list/read/write_stdin/search` only see terminals opened by the current Pi session. For arbitrary cmux topology, use raw `cmux` CLI from this skill.
+
+Examples:
+
+```json
+{"action":"start","name":"dev","command":"npm run dev","placement":"tab"}
+{"action":"read","name":"dev","lines":200}
+{"action":"search","name":"dev","query":"ready|localhost|error","regex":true,"context":2}
+{"action":"write_stdin","name":"dev","input":"rs\n"}
+{"action":"list"}
+```
+
+Do not use `cmux_terminal` just to run `ls`, `rg`, `git status`, or tests that should complete and return output directly; use `bash`.
+
 
 ## Pi / non-TTY automation notes
 

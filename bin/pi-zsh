@@ -1,0 +1,17 @@
+#!/bin/zsh
+# Shell wrapper for Pi bash tool. Pi invokes shellPath as: <shellPath> -c <command>.
+# zsh -c is non-interactive and does not source ~/.zshrc, so source Pi's zsh setup explicitly.
+
+export SHELL=/bin/zsh
+
+if [[ -f "$HOME/.zshenv" ]]; then
+  source "$HOME/.zshenv"
+fi
+
+if [[ -f "$HOME/.zshrc.pi" ]]; then
+  source "$HOME/.zshrc.pi"
+elif [[ -f "$HOME/.zshrc" ]]; then
+  source "$HOME/.zshrc"
+fi
+
+exec /bin/zsh "$@"

@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.78.1",
+  "lastChangelogVersion": "0.79.6",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "medium",
@@ -25,11 +25,42 @@
   "quietStartup": true,
   "httpIdleTimeoutMs": 30000,
   "packages": [
-    "npm:pi-subagents",
-    "npm:pi-intercom",
-    "npm:pi-hermes-memory",
-    "npm:pi-lean-ctx",
-    "npm:@howaboua/pi-codex-conversion"
+    "npm:pi-hermes-memory"
   ],
-  "shellPath": "/bin/zsh"
+  "shellPath": "/bin/zsh",
+  "subagents": {
+    "agentOverrides": {
+      "context-builder": {
+        "disabled": true
+      },
+      "oracle": {
+        "disabled": true
+      },
+      "planner": {
+        "disabled": true
+      },
+      "researcher": {
+        "disabled": true
+      },
+      "reviewer": {
+        "disabled": true
+      },
+      "scout": {
+        "disabled": true
+      },
+      "worker": {
+        "disabled": true
+      }
+    },
+    "disableBuiltins": true
+  },
+  "autocompleteMaxVisible": 10,
+  "defaultProjectTrust": "always",
+  "doubleEscapeAction": "tree",
+  "treeFilterMode": "default",
+  "extensions": [
+    "profile-resources/codex/extensions/cmux-terminals",
+    "profile-resources/codex/extensions/cmux-subagents",
+    "extensions/cmux-attention"
+  ]
 }

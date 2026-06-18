@@ -1,8 +1,20 @@
 # secrets / auth
 auth.json
+cursor-sdk.json
+cursor-sdk-*.json
+cursor-sdk*.json
+*_auth.json
+*auth*.json
+*credentials*.json
+*secret*.json
 *.pem
 *.key
 *.token
+*.crt
+*.cert
+*.p12
+*.pfx
+.netrc
 .env
 .env.*
 !.env.example
@@ -15,8 +27,17 @@ cache/
 run-history.jsonl
 intercom/
 chrome-profiles/
+profiles/profiles.json
+profiles/settings-backups/
+profile-resources/**/node_modules/
+profile-resources/**/test*.mjs
+profile-resources/**/pretty-json-events.mjs
 chrome-harness/logs/
 chrome-harness/*.pid
+tool-output/
+trust.json
+pi-crash.log
+*.crash.log
 
 # dependencies / build
 node_modules/
@@ -31,16 +52,41 @@ __pycache__/
 *.bak*
 *.tmp
 *.log
+*.pid
+*.swp
+*.swo
+.DS_Store
 
 # local browser scratch: keep docs, ignore task-specific scripts
 browser-harness/*.py
 browser-harness/*.sh
+browser-harness/*.png
+browser-harness/*.jpg
+browser-harness/*.jpeg
+browser-harness/*.webp
+browser-harness/*.gif
+browser-harness/*.html
+browser-harness/*.json
 !browser-harness/README.md
 disabled-extensions/
 npm/
+git/
 *.disabled
 *.disabled-*
 pi-codex-conversion.json
+codex-lite.json
+spark.json
 agent.backup*/
 mcp.json.bak*
 *.skill
+
+# local plans / private notes; keep README/AGENTS/SKILL docs tracked explicitly
+*-plan.md
+*-notes.md
+
+# package/test runtime detritus in local extension workspaces
+extensions/**/node_modules/
+extensions/**/.turbo/
+extensions/**/.cache/
+extensions/**/logs/
+extensions/**/*.pid
