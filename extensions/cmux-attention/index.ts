@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import net from "node:net";
@@ -8,12 +8,14 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 type AgentEndMessage = {
   role?: unknown;
   content?: unknown;
+  stopReason?: unknown;
 };
 
 type ExtensionContextLike = {
   cwd?: unknown;
   sessionManager?: {
     getSessionId?: () => unknown;
+    getSessionFile?: () => unknown;
   };
 };
 
@@ -68,6 +70,14 @@ function textFromContent(content: unknown): string | null {
   return parts.join("\n") || null;
 }
 
+function contentHasToolCall(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some((block) => {
+    if (!block || typeof block !== "object") return false;
+    return (block as { type?: unknown }).type === "toolCall";
+  });
+}
+
 function isInternalStatusMessage(message: string | undefined): boolean {
   if (!message) return false;
   const trimmed = message.trim();
@@ -75,6 +85,23 @@ function isInternalStatusMessage(message: string | undefined): boolean {
     /^💾\s*Memory auto-reviewed\b/i.test(trimmed) ||
     /^Saved relevant memory\.?$/i.test(trimmed)
   );
+}
+
+function lastAssistantMessage(event: { messages?: unknown[] }): AgentEndMessage | undefined {
+  const messages = Array.isArray(event.messages) ? event.messages : [];
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") continue;
+    const typed = message as AgentEndMessage;
+    if (typed.role !== "assistant") continue;
+    return typed;
+  }
+  return undefined;
+}
+
+function isToolContinuationAgentEnd(event: { messages?: unknown[] }): boolean {
+  const message = lastAssistantMessage(event);
+  return message?.stopReason === "toolUse" || contentHasToolCall(message?.content);
 }
 
 function lastUserVisibleAssistantMessage(event: { messages?: unknown[] }): string | undefined {
@@ -89,6 +116,36 @@ function lastUserVisibleAssistantMessage(event: { messages?: unknown[] }): strin
     if (text) return text;
   }
   return undefined;
+}
+
+function subagentStatePath(ctx?: ExtensionContextLike): string | undefined {
+  const sessionFile = ctx?.sessionManager?.getSessionFile?.();
+  return typeof sessionFile === "string" && sessionFile.trim() ? `${sessionFile}.cmux-subagents.json` : undefined;
+}
+
+function eventStreamDone(eventsPath: unknown): boolean {
+  if (typeof eventsPath !== "string" || !eventsPath.trim() || !existsSync(eventsPath)) return false;
+  try {
+    const text = readFileSync(eventsPath, "utf8");
+    return /"type"\s*:\s*"(?:agent_end|error)"/.test(text);
+  } catch {
+    return false;
+  }
+}
+
+function hasRunningSubagents(ctx?: ExtensionContextLike): boolean {
+  const statePath = subagentStatePath(ctx);
+  if (!statePath || !existsSync(statePath)) return false;
+  try {
+    const store = JSON.parse(readFileSync(statePath, "utf8"));
+    return Object.values(store.subagents ?? {}).some((value) => {
+      if (!value || typeof value !== "object") return false;
+      const rec = value as { status?: unknown; eventsPath?: unknown };
+      return rec.status === "running" && !eventStreamDone(rec.eventsPath);
+    });
+  } catch {
+    return false;
+  }
 }
 
 function projectNameFromCwd(cwd: string): string | undefined {
@@ -147,6 +204,7 @@ export default function cmuxAttention(pi: ExtensionAPI) {
   if (!hasCmuxContext() || !cmuxAvailable()) return;
 
   let cmuxUnavailable = false;
+  let subagentPollTimer: ReturnType<typeof setTimeout> | undefined;
 
   const runCmux = (command: string): void => {
     if (cmuxUnavailable) return;
@@ -185,6 +243,29 @@ export default function cmuxAttention(pi: ExtensionAPI) {
     runCmux(`set_status ${STATUS_KEY} Idle --icon=checkmark.circle.fill --color=#34C759 --tab=${ws}`);
   };
 
+  const scheduleSubagentIdlePoll = (ctx?: ExtensionContextLike): void => {
+    if (subagentPollTimer) return;
+    subagentPollTimer = setTimeout(() => {
+      subagentPollTimer = undefined;
+      if (hasRunningSubagents(ctx)) {
+        setRunningStatus();
+        scheduleSubagentIdlePoll(ctx);
+        return;
+      }
+      setIdleStatus();
+    }, 2000);
+    subagentPollTimer.unref?.();
+  };
+
+  const setIdleUnlessWorkContinues = (ctx?: ExtensionContextLike): void => {
+    if (hasRunningSubagents(ctx)) {
+      setRunningStatus();
+      scheduleSubagentIdlePoll(ctx);
+      return;
+    }
+    setIdleStatus();
+  };
+
   const notifyCompletion = (event: { messages?: unknown[] }, ctx?: ExtensionContextLike): void => {
     const ws = workspaceId();
     const surface = surfaceId();
@@ -220,11 +301,24 @@ export default function cmuxAttention(pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async (event, ctx) => {
-    setIdleStatus();
+    if (isToolContinuationAgentEnd(event)) {
+      setRunningStatus();
+      return;
+    }
+    setIdleUnlessWorkContinues(ctx as ExtensionContextLike);
     notifyCompletion(event, ctx as ExtensionContextLike);
   });
 
+  pi.on("tool_execution_start", async () => {
+    setRunningStatus();
+  });
+
+  pi.on("tool_execution_update", async () => {
+    setRunningStatus();
+  });
+
   pi.on("session_shutdown", async () => {
+    if (subagentPollTimer) clearTimeout(subagentPollTimer);
     setIdleStatus();
   });
 }

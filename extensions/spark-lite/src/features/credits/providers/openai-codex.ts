@@ -34,7 +34,7 @@ function parseUsedPercent(window?: CodexRateWindow | null): number | undefined {
 
 export const openaiCodexProvider: CreditsProvider = {
   id: PROVIDER,
-  label: "Codex",
+  label: "",
 
   async fetch(ctx, apiKey, signal): Promise<Credits> {
     const headers: Record<string, string> = {

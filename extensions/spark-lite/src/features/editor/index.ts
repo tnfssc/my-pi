@@ -84,7 +84,7 @@ class Editor extends CustomEditor {
 
     const statusLeft = renderSparkStatusLeft(this.ctx, theme);
 
-    return [statusLeft, theme.fg("accent", spinner), workingMessage ? theme.fg("dim", workingMessage) : undefined].filter(Boolean).join(" ");
+    return [theme.fg("accent", spinner), workingMessage ? theme.fg("dim", workingMessage) : undefined, statusLeft].filter(Boolean).join(" ");
   }
 
   private getRight(): string {

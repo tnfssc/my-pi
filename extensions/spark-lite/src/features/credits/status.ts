@@ -9,12 +9,12 @@ const BALANCE_ERROR = 5;
 export function renderCredits(theme: Theme, label: string, credits: Credits): string {
   const styledLabel = theme.fg("dim", label);
 
-  if (credits.type === "windows") return `${styledLabel} ${renderWindows(theme, credits)}`;
-  return `${styledLabel} ${renderBalance(theme, credits)}`;
+  if (credits.type === "windows") return [styledLabel, renderWindows(theme, credits)].filter(Boolean).join(" ");
+  return [styledLabel, renderBalance(theme, credits)].filter(Boolean).join(" ");
 }
 
 export function renderError(theme: Theme, label: string, message: string): string {
-  return theme.fg("error", `${label} credits unavailable: ${message}`);
+  return theme.fg("error", `${label ? `${label} ` : ""}credits unavailable: ${message}`);
 }
 
 function renderWindows(theme: Theme, credits: Extract<Credits, { type: "windows" }>): string {

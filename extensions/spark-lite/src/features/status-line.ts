@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { formatContextUsage, formatCost, formatCwd, linkText, sanitizeText } from "../utils/format";
@@ -31,7 +31,8 @@ function getLeft(ctx: ExtensionContext, theme: Theme): string {
   const cwd = ctx.sessionManager.getCwd();
   const url = pathToFileURL(resolve(cwd));
   const cwdText = linkText(formatCwd(cwd, homedir()), url.href);
-  const branch = footerData?.getGitBranch();
+  const rawBranch = footerData?.getGitBranch();
+  const branch = rawBranch && rawBranch !== basename(resolve(cwd)) ? rawBranch : undefined;
   const sessionName = ctx.sessionManager.getSessionName();
 
   return theme.fg("dim", [cwdText, branch, sessionName].filter(Boolean).join(" • "));
