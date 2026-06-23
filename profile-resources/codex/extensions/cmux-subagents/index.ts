@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-type Action = "start" | "list" | "result" | "stop" | "send" | "close";
+type Action = "start" | "list" | "result" | "wait" | "stop" | "send" | "close";
 type Status = "running" | "done" | "failed" | "stopped" | "stale";
 type Placement = "tab" | "right" | "down";
-interface Params { action: Action; name?: string; subagent_id?: string; prompt?: string; cwd?: string; model?: string; thinking?: string; inherit_context?: boolean; title?: string; focus?: boolean; input?: string; include_done?: boolean; status?: Status | "completed"; }
+interface Params { action: Action; name?: string; subagent_id?: string; prompt?: string; cwd?: string; model?: string; thinking?: string; inherit_context?: boolean; title?: string; focus?: boolean; input?: string; include_done?: boolean; status?: Status | "completed"; timeout_ms?: number; interval_ms?: number; }
 interface SubagentRecord { id: string; name?: string; prompt: string; cwd: string; surface: string; workspace: string; placement: Placement; createdAt: number; updatedAt: number; status: Status; exitCode?: number; piSessionId?: string; sessionFile?: string; eventsPath?: string; latestActivity?: string; result?: string; resultPreview?: string; resultPath?: string; completionNotifiedAt?: number; lastError?: string; model?: string; thinking?: string; }
 interface Store { version: 1; sessionId: string; updatedAt: number; subagents: Record<string, SubagentRecord> }
 
@@ -23,6 +23,10 @@ const RESULT_PREVIEW_MAX = 3000;
 const ACTIVE_WORK_MAX_SUBAGENTS = 6;
 const ACTIVE_WORK_PREVIEW_LINES = 8;
 const ACTIVE_WORK_PREVIEW_CHARS = 1000;
+const WAIT_DEFAULT_TIMEOUT_MS = 300000;
+const WAIT_MAX_TIMEOUT_MS = 3600000;
+const WAIT_DEFAULT_INTERVAL_MS = 1000;
+const WAIT_MIN_INTERVAL_MS = 250;
 
 function getAgentDir(): string {
   return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
@@ -150,6 +154,10 @@ async function readSurfaceText(workspace: string, surface: string, lines: number
   const result = await cmuxJson("surface.read_text", { workspace_id: workspace, surface_id: surface, lines, scrollback }, 10000);
   return result?.text ?? "";
 }
+function isTrackedCmuxTargetMissing(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /surface (?:not found|no longer exists)|terminal surface not found|workspace (?:not found|no longer exists)/i.test(msg);
+}
 function normalizeScreen(output: string): string {
   const lines = output.split(/\r?\n/).map((l) => l.replace(/\s+$/g, "")).filter((l) => {
     const t = l.trim();
@@ -260,7 +268,7 @@ async function refreshStatusFromScreen(ctx: ExtensionContext, rec: SubagentRecor
     await readSurfaceText(rec.workspace, rec.surface, 5, true);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    if (/surface (?:not found|no longer exists)|terminal surface not found/i.test(msg)) { rec.status = "stale"; rec.lastError = msg; update(ctx, rec); }
+    if (isTrackedCmuxTargetMissing(error)) { rec.status = "stale"; rec.lastError = msg; update(ctx, rec); }
   }
   return rec;
 }
@@ -283,18 +291,39 @@ function refreshResult(ctx: ExtensionContext, rec: SubagentRecord): SubagentReco
   if (events.sessionId) rec.piSessionId = events.sessionId;
   if (events.latestActivity) rec.latestActivity = trunc(events.latestActivity, 1000);
   if (events.error) { rec.status = "failed"; rec.lastError = events.error; }
+  if (events.done && rec.status === "running") rec.status = "done";
   const sf = rec.sessionFile ?? discoverSessionFile(rec);
   if (sf) { rec.sessionFile = sf; const summary = parseSessionSummary(sf); if (summary?.id) rec.piSessionId = summary.id; }
   const result = events.result ?? extractLastAssistant(sf);
   if (result) {
     rec.result = result;
     rec.resultPreview = trunc(result, RESULT_PREVIEW_MAX);
-    if (rec.status === "running" && events.done) rec.status = "done";
     if (result.length > RESULT_INLINE_MAX) { const dir = artifactsDir(ctx, rec.id); mkdirSync(dir, { recursive: true }); rec.resultPath = join(dir, "result.md"); writeFileSync(rec.resultPath, result); }
     if (events.done) notifyCompletion(ctx, rec);
   }
   update(ctx, rec);
   return rec;
+}
+function formatResultResponse(rec: SubagentRecord): { text: string; details: SubagentRecord } {
+  const name = rec.name ?? rec.id;
+  if (rec.status === "running") {
+    const parts = [`cmux subagent ${name} is still running; final result is not available yet. Use action=wait, or list until status is not running before action=result.`];
+    if (rec.latestActivity) parts.push(`Latest activity: ${oneLine(rec.latestActivity, 500)}`);
+    if (rec.resultPreview) parts.push(`Latest assistant text (not final):\n${rec.resultPreview}`);
+    if (rec.eventsPath) parts.push(`Events: ${rec.eventsPath}`);
+    if (rec.sessionFile) parts.push(`Child session: ${rec.sessionFile}`);
+    return { text: parts.join("\n"), details: rec };
+  }
+  if (!rec.result) {
+    const parts = [`cmux subagent ${name} is ${rec.status}, but no assistant result was found.`];
+    if (rec.lastError) parts.push(`Error: ${rec.lastError}`);
+    if (rec.eventsPath) parts.push(`Events: ${rec.eventsPath}`);
+    if (rec.sessionFile) parts.push(`Child session: ${rec.sessionFile}`);
+    return { text: parts.join("\n"), details: rec };
+  }
+  const prefix = rec.status === "done" ? "" : `cmux subagent ${name} is ${rec.status}${rec.lastError ? ` (${rec.lastError})` : ""}.\n\n`;
+  if (rec.resultPath) return { text: `${prefix}${rec.resultPreview}\n\nFull result: ${rec.resultPath}\nChild session: ${rec.sessionFile ?? "unknown"}`, details: rec };
+  return { text: `${prefix}${rec.result}\n\nChild session: ${rec.sessionFile ?? "unknown"}`, details: rec };
 }
 function maybePromptWithContext(ctx: ExtensionContext, prompt: string, inherit?: boolean): string { if (!inherit) return prompt; const sf = ctx.sessionManager?.getSessionFile?.(); if (!sf || !existsSync(sf)) return prompt; const lines: string[] = []; for (const line of readFileSync(sf, "utf8").split(/\r?\n/)) { if (!line.trim()) continue; try { const e = JSON.parse(line); if (e.type === "message" && (e.message?.role === "user" || e.message?.role === "assistant")) lines.push(`${e.message.role}: ${textFromContent(e.message.content)}`); } catch {} } const parent = trunc(lines.join("\n\n"), 20000); return `<parent_context>\n${parent}\n</parent_context>\n\n${prompt}`; }
 let startQueue = Promise.resolve();
@@ -323,10 +352,34 @@ async function start(ctx: ExtensionContext, params: Params) {
   return { text: `Started cmux subagent ${params.name ?? id} (${id}).`, details: rec };
 }
 async function list(ctx: ExtensionContext, params: Params) { const store = loadStore(ctx); const recs = []; for (const r of Object.values(store.subagents).sort((a,b)=>a.createdAt-b.createdAt)) recs.push(refreshResult(ctx, await refreshStatusFromScreen(ctx, r))); const shown = params.include_done ? recs : recs.filter((r) => r.status === "running"); if (!shown.length) return { text: params.include_done ? "No cmux subagents in this Pi session." : "No running cmux subagents. Use include_done=true to show completed/stopped/failed records.", details: { subagents: shown, allCount: recs.length } }; return { text: shown.map((r)=>`${r.id}${r.name ? ` (${r.name})` : ""} [${r.status}]: ${oneLine(r.prompt)}${r.latestActivity ? `\n  activity: ${oneLine(r.latestActivity, 240)}` : ""}${r.resultPreview ? `\n  result: ${oneLine(r.resultPreview, 240)}` : ""}${r.eventsPath ? `\n  events: ${r.eventsPath}` : ""}${r.sessionFile ? `\n  session: ${r.sessionFile}` : ""}${r.piSessionId ? `\n  session_id: ${r.piSessionId}` : ""}`).join("\n"), details: { subagents: shown, allCount: recs.length } }; }
-async function result(ctx: ExtensionContext, params: Params) { const rec = refreshResult(ctx, await refreshStatusFromScreen(ctx, resolve(ctx, params))); if (!rec.result) return { text: `No result found yet for ${rec.name ?? rec.id}.${rec.sessionFile ? ` Session: ${rec.sessionFile}` : ""}`, details: rec }; if (rec.resultPath) return { text: `${rec.resultPreview}\n\nFull result: ${rec.resultPath}\nChild session: ${rec.sessionFile ?? "unknown"}`, details: rec }; return { text: `${rec.result}\n\nChild session: ${rec.sessionFile ?? "unknown"}`, details: rec }; }
+async function result(ctx: ExtensionContext, params: Params) { const rec = refreshResult(ctx, await refreshStatusFromScreen(ctx, resolve(ctx, params))); return formatResultResponse(rec); }
+async function wait(ctx: ExtensionContext, params: Params, signal?: AbortSignal) {
+  const initial = resolve(ctx, params);
+  const timeoutMs = Math.min(Math.max(params.timeout_ms ?? WAIT_DEFAULT_TIMEOUT_MS, 0), WAIT_MAX_TIMEOUT_MS);
+  const intervalMs = Math.max(params.interval_ms ?? WAIT_DEFAULT_INTERVAL_MS, WAIT_MIN_INTERVAL_MS);
+  const deadline = Date.now() + timeoutMs;
+  let rec = initial;
+  while (true) {
+    if (signal?.aborted) throw new Error(`Wait for cmux subagent ${initial.name ?? initial.id} was aborted`);
+    rec = resolve(ctx, { action: "wait", subagent_id: initial.id });
+    rec = refreshResult(ctx, await refreshStatusFromScreen(ctx, rec));
+    if (rec.status !== "running") return formatResultResponse(rec);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      const name = rec.name ?? rec.id;
+      const parts = [`Timed out waiting ${timeoutMs}ms for cmux subagent ${name}; still running.`];
+      if (rec.latestActivity) parts.push(`Latest activity: ${oneLine(rec.latestActivity, 500)}`);
+      if (rec.resultPreview) parts.push(`Latest assistant text (not final):\n${rec.resultPreview}`);
+      if (rec.eventsPath) parts.push(`Events: ${rec.eventsPath}`);
+      if (rec.sessionFile) parts.push(`Child session: ${rec.sessionFile}`);
+      return { text: parts.join("\n"), details: rec };
+    }
+    await sleep(Math.min(intervalMs, remaining));
+  }
+}
 async function stop(ctx: ExtensionContext, params: Params) { const rec = resolve(ctx, params); try { await cmuxJson("surface.send_key", { workspace_id: rec.workspace, surface_id: rec.surface, key: "ctrl-c" }, 1500); } catch { await sendText(rec.workspace, rec.surface, "\u0003"); } rec.status = "stopped"; update(ctx, rec); return { text: `Stopped cmux subagent ${rec.name ?? rec.id}.`, details: rec }; }
 async function send(ctx: ExtensionContext, params: Params) { const rec = resolve(ctx, params); if (!params.input) throw new Error("send requires input"); await sendText(rec.workspace, rec.surface, params.input.endsWith("\n") ? params.input : `${params.input}\n`); return { text: `Sent input to cmux subagent ${rec.name ?? rec.id}.`, details: rec }; }
-async function closeOne(ctx: ExtensionContext, rec: SubagentRecord): Promise<void> { try { await cmuxJson("surface.close", { workspace_id: rec.workspace, surface_id: rec.surface }); } catch (error) { const msg = error instanceof Error ? error.message : String(error); if (!/surface (?:not found|no longer exists)|terminal surface not found/i.test(msg)) throw error; } remove(ctx, rec); }
+async function closeOne(ctx: ExtensionContext, rec: SubagentRecord): Promise<void> { try { await cmuxJson("surface.close", { workspace_id: rec.workspace, surface_id: rec.surface }); } catch (error) { if (!isTrackedCmuxTargetMissing(error)) throw error; } remove(ctx, rec); }
 async function close(ctx: ExtensionContext, params: Params) { if (params.status && !params.name && !params.subagent_id) { const wanted = params.status === "completed" ? new Set(["done", "failed", "stopped", "stale"]) : new Set([params.status]); const recs = Object.values(loadStore(ctx).subagents).filter((r) => wanted.has(r.status)); for (const rec of recs) await closeOne(ctx, rec); return { text: `Closed ${recs.length} cmux subagent record(s) with status ${params.status}.`, details: { closed: recs } }; } const rec = resolve(ctx, params); await closeOne(ctx, rec); return { text: `Closed cmux subagent ${rec.name ?? rec.id}.`, details: rec }; }
-const parameters = { type: "object", additionalProperties: false, required: ["action"], properties: { action: { type: "string", enum: ["start", "list", "result", "stop", "send", "close"] }, name: { type: "string" }, subagent_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, inherit_context: { type: "boolean" }, title: { type: "string" }, focus: { type: "boolean", default: false }, input: { type: "string" }, include_done: { type: "boolean", default: false }, status: { type: "string", enum: ["running", "done", "failed", "stopped", "stale", "completed"] } } } as const;
-export default function cmuxSubagents(pi: ExtensionAPI) { if (!isEnabledProfile() || process.env.PI_CMUX_SUBAGENT_DEPTH === "1") return; pi.registerTool({ name: TOOL_NAME, label: "cmux subagent", description: "Start visible Pi subagents in new cmux tabs, track live JSON-event progress, return final results, stop/send steering input, or close child cmux tabs.", promptSnippet: "Use cmux_subagent for autonomous visible child Pi agents. Starts always create new cmux tabs. Child progress streams from Pi JSON events; final results come from the JSON event stream with the child session transcript as fallback/audit path.", promptGuidelines: ["Use action=start for autonomous child tasks that can run in parallel while you continue other work.", "cmux_subagent action=start always opens a new cmux tab; do not request right/down splits.", "Subagents are task-oriented, not terminal-shaped: prefer list/result/stop/send/close over reading raw terminal output.", "Use action=list for running subagents; pass include_done=true only when you need completed/stopped/failed records.", "Use action=result to fetch a completed child result plus events/session paths for audit.", "Use action=stop when the child is going wrong or no longer needed; stop preserves partial events/results.", "Use action=send for best-effort steering of a visible child Pi terminal.", "Use action=close to close the child cmux tab and remove it from this session's tracked subagent list.", "Use close with status=completed to close/remove completed, failed, stopped, and stale child records."], parameters, async execute(_toolCallId, rawParams, _signal, _onUpdate, ctx) { const params = rawParams as Params; let out; if (params.action === "start") out = await enqueueStart(() => start(ctx, params)); else if (params.action === "list") out = await list(ctx, params); else if (params.action === "result") out = await result(ctx, params); else if (params.action === "stop") out = await stop(ctx, params); else if (params.action === "send") out = await send(ctx, params); else if (params.action === "close") out = await close(ctx, params); else throw new Error(`Unknown action: ${params.action}`); return { content: [{ type: "text", text: out.text }], details: out.details }; } }); }
+const parameters = { type: "object", additionalProperties: false, required: ["action"], properties: { action: { type: "string", enum: ["start", "list", "result", "wait", "stop", "send", "close"] }, name: { type: "string" }, subagent_id: { type: "string" }, prompt: { type: "string" }, cwd: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, inherit_context: { type: "boolean" }, title: { type: "string" }, focus: { type: "boolean", default: false }, input: { type: "string" }, include_done: { type: "boolean", default: false }, status: { type: "string", enum: ["running", "done", "failed", "stopped", "stale", "completed"] }, timeout_ms: { type: "number", default: WAIT_DEFAULT_TIMEOUT_MS, minimum: 0, maximum: WAIT_MAX_TIMEOUT_MS }, interval_ms: { type: "number", default: WAIT_DEFAULT_INTERVAL_MS, minimum: WAIT_MIN_INTERVAL_MS } } } as const;
+export default function cmuxSubagents(pi: ExtensionAPI) { if (!isEnabledProfile() || process.env.PI_CMUX_SUBAGENT_DEPTH === "1") return; pi.registerTool({ name: TOOL_NAME, label: "cmux subagent", description: "Start visible Pi subagents in new cmux tabs, track live JSON-event progress, wait for completion, return final results, stop/send steering input, or close child cmux tabs.", promptSnippet: "Use cmux_subagent for autonomous visible child Pi agents. Starts always create new cmux tabs. Child progress streams from Pi JSON events; use action=wait when you need the final answer, then action=result only after the child is done.", promptGuidelines: ["Use action=start for autonomous child tasks that can run in parallel while you continue other work.", "cmux_subagent action=start always opens a new cmux tab; do not request right/down splits.", "Subagents are task-oriented, not terminal-shaped: prefer list/wait/result/stop/send/close over reading raw terminal output.", "Use action=list for running subagents; pass include_done=true only when you need completed/stopped/failed records.", "Use action=wait when you need a child subagent's final answer; it blocks until status is not running or timeout_ms expires.", "Do not treat a running action=result response, 'No result found yet', or latest assistant text as final; wait/list until status is not running first.", "Use action=result to fetch a completed child result plus events/session paths for audit.", "Use action=stop when the child is going wrong or no longer needed; stop preserves partial events/results.", "Use action=send for best-effort steering of a visible child Pi terminal.", "Use action=close to close the child cmux tab and remove it from this session's tracked subagent list.", "Use close with status=completed to close/remove completed, failed, stopped, and stale child records."], parameters, async execute(_toolCallId, rawParams, signal, _onUpdate, ctx) { const params = rawParams as Params; let out; if (params.action === "start") out = await enqueueStart(() => start(ctx, params)); else if (params.action === "list") out = await list(ctx, params); else if (params.action === "result") out = await result(ctx, params); else if (params.action === "wait") out = await wait(ctx, params, signal); else if (params.action === "stop") out = await stop(ctx, params); else if (params.action === "send") out = await send(ctx, params); else if (params.action === "close") out = await close(ctx, params); else throw new Error(`Unknown action: ${params.action}`); return { content: [{ type: "text", text: out.text }], details: out.details }; } }); }

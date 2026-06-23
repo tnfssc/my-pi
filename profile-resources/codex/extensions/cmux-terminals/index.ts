@@ -305,7 +305,7 @@ async function withStartLock<T>(fn: () => Promise<T>): Promise<T> {
 
 function isSurfaceMissing(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
-  return /surface (?:not found|no longer exists)|terminal surface not found/i.test(msg);
+  return /surface (?:not found|no longer exists)|terminal surface not found|workspace (?:not found|no longer exists)/i.test(msg);
 }
 
 function markStale(ctx: ExtensionContext, record: TerminalRecord, error: unknown): never {
@@ -496,7 +496,13 @@ async function activeWorkStatus(ctx: ExtensionContext): Promise<string | undefin
   catch { records = []; }
   const subagents = runningSubagents(ctx);
   if (records.length === 0 && subagents.length === 0) return undefined;
-  const lines = ["<active_work>"];
+  const lines = [
+    "<active_work>",
+    "Internal Pi runtime context, auto-injected by the cmux extension. This is not a human user message or request.",
+    "Do not acknowledge this block. Do not describe it as user instruction, user authorization, or earlier user constraint.",
+    "Use it only as state for already-open cmux terminals/subagents; actual user request and higher-priority instructions control tool choice.",
+    ""
+  ];
   let shown = 0;
   if (records.length > 0) {
     lines.push("Open terminals for this Pi session:");
@@ -583,7 +589,7 @@ export default function cmuxTerminals(pi: ExtensionAPI) {
       "Started terminals are automatically summarized in active_work with a small live screen preview; use read/search when you need more output.",
       "Use action=write_stdin to send raw input; include \n when Enter is wanted.",
       "Use action=close to close the cmux tab and remove the terminal from this session's tracked list.",
-      "If close sees a missing surface, the stale record is still removed."
+      "If close sees a missing surface/workspace, the stale record is still removed."
     ],
     parameters: parameters as any,
     async execute(_toolCallId, rawParams, _signal, _onUpdate, ctx) {

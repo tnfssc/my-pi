@@ -73,79 +73,61 @@ function serviceTierLabel(mode: ServiceTierMode): string {
   return "normal";
 }
 
-function unquoteShellToken(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length >= 2) {
-    const quote = trimmed[0];
-    if ((quote === "'" || quote === '"') && trimmed[trimmed.length - 1] === quote) {
-      return trimmed.slice(1, -1);
-    }
-  }
-  return trimmed;
-}
-
-function firstShellToken(value: string): string | undefined {
-  const trimmed = value.trimStart();
-  if (!trimmed) return undefined;
-  const quote = trimmed[0];
-  if (quote === "'" || quote === '"') {
-    const end = trimmed.indexOf(quote, 1);
-    return end === -1 ? trimmed.slice(1) : trimmed.slice(1, end);
-  }
-  return trimmed.split(/\s+/, 1)[0];
-}
-
-function parseHeredocHead(line: string): { delimiter: string } | undefined {
-  const match = line.match(/<<-?\s*(['\"]?)([A-Za-z0-9_][A-Za-z0-9_-]*)\1\s*$/);
+function parseApplyPatchHeredocLine(line: string): { delimiter: string; stripLeadingTabs: boolean } | undefined {
+  // Adapted from @howaboua/pi-codex-conversion: only detect apply_patch heredocs,
+  // so cat/write_file markdown bodies with leading +/- do not get diff colors.
+  const match = line.match(/^\s*(?:(?:cd\s+("[^"]+"|'[^']+'|[^&;\s]+)\s*&&\s*)?)(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()]+\s+)*(?:env\s+(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()]+\s+)*)?(?:[^\s;&|()]+\/)?apply_patch\s+<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*$/);
   if (!match) return undefined;
-  return { delimiter: match[2] };
+  const delimiter = match[2] ?? match[3] ?? match[4];
+  return delimiter ? { delimiter, stripLeadingTabs: match[1] === "-" } : undefined;
 }
 
-function parseWriteFilePath(head: string): string | undefined {
-  const match = head.match(/^\s*write_file\s+(.+?)\s+<<-?\s*(['\"]?)[A-Za-z0-9_][A-Za-z0-9_-]*\2\s*$/);
+function unquoteShellToken(token: string): string {
+  if ((token.startsWith("'") && token.endsWith("'")) || (token.startsWith('"') && token.endsWith('"'))) return token.slice(1, -1);
+  return token;
+}
+
+function parseWriteFileHeredocLine(line: string): { delimiter: string; stripLeadingTabs: boolean; path: string } | undefined {
+  const match = line.match(/^\s*(?:(?:cd\s+("[^"]+"|'[^']+'|[^&;\s]+)\s*&&\s*)?)(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()]+\s+)*(?:env\s+(?:[A-Za-z_][A-Za-z0-9_]*=[^\s;&|()]+\s+)*)?(?:[^\s;&|()]+\/)?write_file\s+("[^"]+"|'[^']+'|[^\s;&|()]+)\s+<<(-?)\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))\s*$/);
   if (!match) return undefined;
-  return firstShellToken(unquoteShellToken(match[1]));
+  const delimiter = match[4] ?? match[5] ?? match[6];
+  return delimiter ? { delimiter, stripLeadingTabs: match[3] === "-", path: unquoteShellToken(match[2] ?? "") } : undefined;
 }
 
-function highlightPatch(body: string, theme: { fg(role: string, text: string): string }): string[] {
-  return body.split("\n").map((line) => {
-    if (line.startsWith("+")) return theme.fg("toolDiffAdded", line);
-    if (line.startsWith("-")) return theme.fg("toolDiffRemoved", line);
-    if (line.startsWith("@@")) return theme.fg("syntaxFunction", line);
-    if (line.startsWith("***")) return theme.fg("accent", line);
-    return theme.fg("toolOutput", line);
-  });
-}
-
-function highlightedCodexCommand(command: string, theme: { fg(role: string, text: string): string; bold(text: string): string }): string {
+function highlightCommandHeredocs(command: string, theme: { fg(role: string, text: string): string }): string {
   const lines = command.split("\n");
   const rendered: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const head = lines[i] ?? "";
-    const heredoc = parseHeredocHead(head);
-    if (!heredoc) {
-      rendered.push(...highlightCode(head, "bash"));
-      continue;
-    }
+    const patchHeredoc = parseApplyPatchHeredocLine(head);
+    const writeFileHeredoc = patchHeredoc ? undefined : parseWriteFileHeredocLine(head);
+    const heredoc = patchHeredoc ?? writeFileHeredoc;
+    rendered.push(head);
+    if (!heredoc) continue;
 
+    const bodyLines: string[] = [];
     let endIndex = i + 1;
-    while (endIndex < lines.length && lines[endIndex]?.trim() !== heredoc.delimiter) {
+    while (endIndex < lines.length) {
+      const rawLine = lines[endIndex] ?? "";
+      const line = heredoc.stripLeadingTabs ? rawLine.replace(/^\t+/, "") : rawLine;
+      if (line === heredoc.delimiter) break;
+      bodyLines.push(line);
       endIndex++;
     }
 
-    const body = lines.slice(i + 1, endIndex).join("\n");
-    const toolName = firstShellToken(head);
-    rendered.push(...highlightCode(head, "bash"));
-    if (body) {
-      rendered.push(...(toolName === "apply_patch"
-        ? highlightPatch(body, theme)
-        : toolName === "write_file"
-          ? highlightCode(body, getLanguageFromPath(parseWriteFilePath(head) ?? "") ?? "")
-          : highlightCode(body, "bash")));
+    if (patchHeredoc) {
+      rendered.push(...bodyLines.map((line) => line.startsWith("+")
+        ? theme.fg("toolDiffAdded", line)
+        : line.startsWith("-")
+          ? theme.fg("toolDiffRemoved", line)
+          : line));
+    } else if (writeFileHeredoc) {
+      rendered.push(...highlightCode(bodyLines.join("\n"), getLanguageFromPath(writeFileHeredoc.path) ?? ""));
     }
+
     if (endIndex < lines.length) {
-      rendered.push(theme.fg("syntaxPunctuation", lines[endIndex] ?? ""));
+      rendered.push(lines[endIndex] ?? "");
       i = endIndex;
     }
   }
@@ -153,19 +135,82 @@ function highlightedCodexCommand(command: string, theme: { fg(role: string, text
   return rendered.join("\n");
 }
 
+const streamingToolArgsJson = new Map<string, string>();
+
+function toolCallFromMessageUpdate(event: { message?: unknown; assistantMessageEvent?: unknown }): { id?: string } | undefined {
+  const content = (event.message as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return undefined;
+  const assistantEvent = event.assistantMessageEvent as { contentIndex?: unknown; toolCall?: { id?: string } } | undefined;
+  if (assistantEvent?.toolCall?.id) return assistantEvent.toolCall;
+  const index = typeof assistantEvent?.contentIndex === "number" ? assistantEvent.contentIndex : undefined;
+  const indexed = index !== undefined ? content[index] : undefined;
+  if (indexed && typeof indexed === "object" && (indexed as { type?: unknown }).type === "toolCall") return indexed as { id?: string };
+  return content.findLast?.((block) => block && typeof block === "object" && (block as { type?: unknown }).type === "toolCall") as { id?: string } | undefined;
+}
+
+function decodeJsonStringPrefix(input: string): string {
+  let output = "";
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char === '"') return output;
+    if (char !== "\\") {
+      output += char;
+      continue;
+    }
+    const next = input[++i];
+    if (next === undefined) break;
+    if (next === '"' || next === "\\" || next === "/") output += next;
+    else if (next === "n") output += "\n";
+    else if (next === "r") output += "\r";
+    else if (next === "t") output += "\t";
+    else output += next;
+  }
+  return output;
+}
+
+function streamingCommandForTool(toolCallId: string): string | undefined {
+  const rawJson = streamingToolArgsJson.get(toolCallId);
+  if (rawJson === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(rawJson) as { command?: unknown };
+    if (typeof parsed.command === "string") return parsed.command;
+  } catch {}
+  const match = /"command"\s*:\s*"/.exec(rawJson);
+  return match ? decodeJsonStringPrefix(rawJson.slice(match.index + match[0].length)) : "";
+}
+
 function registerBashSyntaxHighlighting(pi: ExtensionAPI): void {
   const originalBash = createBashToolDefinition(process.cwd());
+
+  pi.on("message_update", async (event) => {
+    const assistantEvent = event.assistantMessageEvent as { type?: unknown; delta?: unknown };
+    const toolCall = toolCallFromMessageUpdate(event);
+    if (!toolCall?.id) return;
+    if (assistantEvent.type === "toolcall_start") streamingToolArgsJson.set(toolCall.id, "");
+    else if (assistantEvent.type === "toolcall_delta" && typeof assistantEvent.delta === "string") {
+      streamingToolArgsJson.set(toolCall.id, `${streamingToolArgsJson.get(toolCall.id) ?? ""}${assistantEvent.delta}`);
+    }
+  });
+
+  pi.on("session_start", async () => streamingToolArgsJson.clear());
+
   pi.registerTool({
     ...originalBash,
     renderCall(args: BashCallArgs, theme, context) {
-      const base = originalBash.renderCall?.(args, theme, context);
-      if (!isEnabledProfile()) return base ?? new Text("", 0, 0);
+      const command = streamingCommandForTool(context.toolCallId) ?? (typeof args.command === "string" ? args.command : "");
+      if (isEnabledProfile()) {
+        const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+        if (!command && !context.executionStarted) {
+          text.setText(theme.fg("toolTitle", theme.bold("$ streaming bash command…")));
+        } else {
+          const timeoutSuffix = args.timeout ? theme.fg("muted", ` (timeout ${args.timeout}s)`) : "";
+          text.setText(`${theme.fg("toolTitle", theme.bold("$ "))}${highlightCommandHeredocs(command, theme)}${timeoutSuffix}`);
+        }
+        return text;
+      }
 
-      const text = base instanceof Text ? base : context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
-      const command = typeof args.command === "string" ? args.command : "";
-      const timeoutSuffix = args.timeout ? theme.fg("muted", ` (timeout ${args.timeout}s)`) : "";
-      text.setText(`${theme.fg("toolTitle", theme.bold("$ "))}${highlightedCodexCommand(command, theme)}${timeoutSuffix}`);
-      return text;
+      const base = originalBash.renderCall?.(args, theme, context);
+      return base ?? new Text("", 0, 0);
     },
   });
 }
