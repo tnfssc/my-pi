@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage: write_file <path>
+
+Overwrite <path> with stdin. Creates parent directories.
+
+Example:
+  write_file src/example.txt <<'EOF'
+  file contents
+  EOF
+USAGE
+}
+
+if [[ $# -ne 1 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  [[ $# -eq 1 && ("${1:-}" == "-h" || "${1:-}" == "--help") ]] && exit 0
+  exit 2
+fi
+
+target=$1
+if [[ -z "$target" || "$target" == "-" ]]; then
+  echo "write_file: target path required" >&2
+  exit 2
+fi
+if [[ -d "$target" ]]; then
+  echo "write_file: target is a directory: $target" >&2
+  exit 1
+fi
+
+parent=$(dirname -- "$target")
+base=$(basename -- "$target")
+mkdir -p -- "$parent"
+
+tmp=$(mktemp "$parent/.write.$base.XXXXXX")
+cleanup() { rm -f -- "$tmp"; }
+trap cleanup EXIT
+
+cat > "$tmp"
+if [[ -e "$target" ]]; then
+  mode=$(stat -f '%Lp' "$target" 2>/dev/null || stat -c '%a' "$target" 2>/dev/null || true)
+  [[ -n "${mode:-}" ]] && chmod "$mode" "$tmp" 2>/dev/null || true
+else
+  chmod 644 "$tmp" 2>/dev/null || true
+fi
+mv -f -- "$tmp" "$target"
+trap - EXIT
+
+bytes=$(wc -c < "$target" | tr -d '[:space:]')
+printf 'Wrote %s (%s bytes)\n' "$target" "$bytes"
